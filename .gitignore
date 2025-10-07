@@ -1,0 +1,30 @@
+# Compiled Binaries and Build Output
+# This is the most important folder to ignore in your project.
+/bin/
+
+# C/C++ build artifacts
+*.o
+*.so
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+# If you decide to use a virtual environment (e.g., venv), ignore it.
+venv/
+.venv/
+env/
+.env
+
+# IDE and Editor configuration files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS-generated files
+.DS_Store
+Thumbs.db
