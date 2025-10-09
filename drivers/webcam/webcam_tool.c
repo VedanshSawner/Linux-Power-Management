@@ -50,11 +50,13 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s <enable|disable>\n", argv[0]);
         return 1;
     }
-    
-    char webcam_id[ID_BUFFER_SIZE] = {0};
 
+    // For enabling, we may need to find the ID differently, but this works for disabling.
+    // A robust solution might need to store the ID before unbinding.
+    char webcam_id[ID_BUFFER_SIZE] = {0};
     if (find_webcam_id(webcam_id, sizeof(webcam_id)) != 0) {
         fprintf(stderr, "Webcam device ID not found. Is it already disabled or unplugged?\n");
+        // We cannot proceed if no ID is found.
         return 1;
     }
 

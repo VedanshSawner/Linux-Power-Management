@@ -5,55 +5,62 @@ class AppLogic:
     def __init__(self):
         self.project_root = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
         self.bin_path = os.path.join(self.project_root, 'bin')
-        
+
     def _run_c_tool(self, tool_name, args):
-        """A generic helper to run a compiled C tool from the bin/ directory."""
         tool_path = os.path.join(self.bin_path, tool_name)
-
         if not os.path.exists(tool_path):
-            print(f"Error: C tool not found at {tool_path}")
-            print("Have you compiled the C code using the Makefile or build.sh script?")
-            return None # Indicate failure
-
+            print(f"Error: C tool '{tool_path}' not found. Have you compiled it?")
+            return None
         command = ['sudo', tool_path] + args
         print(f"Core: Running command -> {' '.join(command)}")
-
         try:
             result = subprocess.run(command, capture_output=True, text=True, check=True)
-            print(f"Core: C tool output -> {result.stdout.strip()}")
-            return result # Indicate success
+            return result
         except subprocess.CalledProcessError as e:
-            print(f"Core Error: C tool failed with exit code {e.returncode}")
-            print(f"Core Error Output: {e.stderr.strip()}")
-            return None # Indicate failure
-    
-    def set_brightness(self, value):
-
-        print(f"Core: Received request to set brightness to {value}%")
-        
-        tool_path = os.path.join(self.bin_path, 'brightness_tool')
-        
-        # Build the command that will be executed in the terminal
-        command = ['sudo', tool_path, str(value)]
-        
-        print(f"Core: Running command -> {' '.join(command)}")
-        try:
-            # Run the command
-            subprocess.run(command, capture_output=True, text=True, check=True)
-        except subprocess.CalledProcessError as e:
-            # If the C tool returns an error, print it
             print(f"Core Error: C tool failed: {e.stderr.strip()}")
-        except FileNotFoundError:
-            print(f"Core Error: '{tool_path}' not found. Did you compile the C code?")
-        
-    def toggle_webcam(self, current_button_text):
+            return None
+    
+    def get_usb_devices(self):
         """
-        Calls the C tool to enable or disable the webcam.
-        'current_button_text' will be "Disable Webcam" or "Enable Webcam".
+        Calls the usb_manager_tool to get a list of controllable devices.
+        Returns a list of dictionaries.
         """
-        # Determine the action based on the button's current text
-        action = 'disable' if "Disable" in current_button_text else 'enable'
-        
-        print(f"Core: Received request to {action} webcam.")
-        self._run_c_tool('webcam_tool', [action])
+        result = self._run_c_tool('usb_manager_tool', ['list'])
+        if not result or not result.stdout:
+            return []
 
+        devices = []
+        # Regex to find controllable ports with devices attached
+        port_regex = re.compile(r'^\s*Port (\d+): \d+-\d+\.\d+ power \w+ lapic \d+ NAK (\w+), device=(\S+)')
+        current_location = None
+
+        for line in result.stdout.strip().split('\n'):
+            if line.startswith("Current status for hub"):
+                current_location = line.split()[-1] # Get hub location e.g., '1-1'
+            
+            match = port_regex.search(line)
+            if match and current_location:
+                port, status, name = match.groups()
+                devices.append({
+                    "location": current_location,
+                    "port": port,
+                    "name": name,
+                    "status": status
+                })
+        return devices
+
+    def suspend_usb_device(self, location, port):
+        print(f"Core: Suspending USB device at {location} port {port}")
+        self._run_c_tool('usb_manager_tool', ['suspend', location, port])
+
+    def resume_usb_device(self, location, port):
+        print(f"Core: Resuming USB device at {location} port {port}")
+        self._run_c_tool('usb_manager_tool', ['resume', location, port])
+
+    def send_notification(self, title, message):
+        print(f"Core: Sending notification: {title} - {message}")
+        self._run_c_tool('notifier_tool', [title, message])
+
+    def set_brightness(self, value):
+        print(f"Core: Received request to set brightness to {value}%")
+        self._run_c_tool('brightness_tool', [str(value)])
