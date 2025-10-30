@@ -20,7 +20,7 @@ void run_command(const char* command) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <list | suspend <location> <port> | resume <location> <port>>\n", argv[0]);
+        fprintf(stderr, "Usage: %s list | suspend <location> <port> | resume <location> <port>>\n", argv[0]);
         return 1;
     }
 
