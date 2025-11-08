@@ -38,8 +38,8 @@ fi
 
 echo "--- Building all tools ---"
 
-echo "Building: brightness tool..."
-(cd brightness && make)
+#echo "Building: brightness tool..."
+#(cd brightness && make)
 echo "Building: notifier tool..."
 (cd notifier && make)
 echo "Building: cpu_governor tool..."
