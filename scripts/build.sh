@@ -10,8 +10,8 @@ echo "Cleaning: brightness tool..."
 (cd brightness && make clean)
 echo "Cleaning: notifier tool..."
 (cd notifier && make clean)
-#echo "Cleaning: keyboard_backlight tool..."
-#(cd keyboard_backlight && make clean)
+echo "Cleaning: keyboard_backlight tool..."
+(cd keyboard_backlight && make clean)
 echo "Cleaning: cpu_governor tool..."
 (cd cpu_governor && make clean)
 echo "Cleaning: power_status tool..."
@@ -38,8 +38,8 @@ fi
 
 echo "--- Building all tools ---"
 
-#echo "Building: brightness tool..."
-#(cd brightness && make)
+echo "Building: brightness tool..."
+(cd brightness && make)
 echo "Building: notifier tool..."
 (cd notifier && make)
 echo "Building: cpu_governor tool..."
