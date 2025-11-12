@@ -1,276 +1,298 @@
 import tkinter as tk
-from tkinter import ttk
-from tkinter import messagebox
-import subprocess
+from tkinter import ttk, messagebox
 import os
-import re
-from typing import List, Dict, Any
 
-# NOTE: The redundant 'ApplicationLogic' class previously defined here has been removed.
-# All logic is now accessed via the 'self.logic' instance passed in __init__.
-
-# --- APPLICATION GUI CLASS ---
+# ------------------------------
+# --- IMPROVED APPLICATION GUI ---
+# ------------------------------
 class ApplicationGUI:
     """
-    Tkinter-based Graphical User Interface for the Linux Power Manager.
-    It relies on an external AppLogic instance for all system interactions.
+    Modernized Tkinter GUI for the Linux Power Manager
     """
+
     def __init__(self, root, app_logic):
         self.root = root
         self.logic = app_logic
-        self.root.title("Linux Power Manager")
-        self.root.geometry("450x800")
-        self.root.resizable(True, True)
+        self.root.title("⚡ Linux Power Manager")
+        self.root.geometry("900x600")
+        self.root.minsize(700, 500)
+        self.root.configure(bg="#f7f9fb")
 
-        # Set up a modern look and feel
+        # --- Modern Theme ---
         style = ttk.Style(self.root)
-        style.theme_use('clam')
+        style.theme_use("clam")
+        style.configure("TLabel", font=("Segoe UI", 10), background="#f7f9fb")
+        style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=6)
+        style.configure("TCheckbutton", font=("Segoe UI", 10), background="#f7f9fb")
+        style.configure("TLabelframe", background="#f7f9fb", labelanchor="n", relief="ridge", padding=10)
+        style.configure("TLabelframe.Label", font=("Segoe UI", 11, "bold"))
+        style.configure("TScale", background="#f7f9fb")
 
-        # --- Create Top-Level Frames ---
-        hw_frame = ttk.LabelFrame(self.root, text="Hardware Controls", padding=(20, 10))
-        conn_frame = ttk.LabelFrame(self.root, text="Connectivity", padding=(20, 10))
-        usb_frame = ttk.LabelFrame(self.root, text="USB Device Power", padding=(20, 10))
-        profile_frame = ttk.LabelFrame(self.root, text="Settings Profiles", padding=(20, 10))
+        # --- Layout: Sidebar + Main Area ---
+        self.sidebar = ttk.Frame(self.root, width=180, relief="ridge", padding=10)
+        self.sidebar.pack(side="left", fill="y")
+        self.main_area = ttk.Frame(self.root)
+        self.main_area.pack(side="right", expand=True, fill="both")
 
-        # --- Pack Frames ---
-        hw_frame.pack(padx=10, pady=10, fill="x")
-        conn_frame.pack(padx=10, pady=10, fill="x")
-        usb_frame.pack(padx=10, pady=10, fill="x")
-        profile_frame.pack(padx=10, pady=10, fill="x")
+        # --- Quick Toolbar ---
+        self.toolbar = ttk.Frame(self.main_area)
+        self.toolbar.pack(fill="x", pady=(5, 0))
+        ttk.Button(self.toolbar, text="🔋 Power Saver", command=lambda: self.apply_profile("Power Saver")).pack(side="left", padx=4)
+        ttk.Button(self.toolbar, text="⚙️ Balanced", command=lambda: self.apply_profile("Balanced")).pack(side="left", padx=4)
+        ttk.Button(self.toolbar, text="🚀 Performance", command=lambda: self.apply_profile("Performance")).pack(side="left", padx=4)
 
-        # --- Populate Frames ---
-        self._create_hardware_controls(hw_frame)
-        self._create_connectivity_controls(conn_frame)
-        self._create_usb_controls(usb_frame)
-        self._create_profile_controls(profile_frame)
+        # --- Create Frames ---
+        self.frames = {}
+        self.frames["Hardware"] = ttk.LabelFrame(self.main_area, text="Hardware Controls")
+        self.frames["Connectivity"] = ttk.LabelFrame(self.main_area, text="Connectivity")
+        self.frames["USB"] = ttk.LabelFrame(self.main_area, text="USB Power Control")
+        self.frames["UPower"] = ttk.LabelFrame(self.main_area, text="UPower Shutdown Config")
+        self.frames["Profiles"] = ttk.LabelFrame(self.main_area, text="Settings Profiles")
 
-        # Placeholder for save_profile compatibility
+        # Populate frames
+        self._create_hardware_controls(self.frames["Hardware"])
+        self._create_connectivity_controls(self.frames["Connectivity"])
+        self._create_usb_controls(self.frames["USB"])
+        self._create_upower_controls(self.frames["UPower"])
+        self._create_profile_controls(self.frames["Profiles"])
+
+        # --- Sidebar Navigation ---
+        ttk.Label(self.sidebar, text="⚡ Control Panels", font=("Segoe UI", 11, "bold")).pack(pady=5)
+        for name in self.frames.keys():
+            ttk.Button(self.sidebar, text=name, command=lambda n=name: self._show_frame(n)).pack(fill="x", pady=4)
+        ttk.Separator(self.sidebar, orient="horizontal").pack(fill="x", pady=10)
+
+        # --- Status Bar ---
+        self.status_bar = ttk.Label(self.root, text="Loading system status...", anchor="w")
+        self.status_bar.pack(side="bottom", fill="x")
+
+        # Placeholder
         self.keyboard_slider = ttk.Scale(self.root, from_=0, to=100, orient="horizontal")
 
-        # --- Start Power Status Polling ---
+        # Show initial frame
+        self._show_frame("Hardware")
+
+        # --- Power Loop ---
         self.last_power_status = self.logic.get_power_status()
         self._check_power_loop()
+        self._update_status_bar()
 
-    def _create_hardware_controls(self, parent_frame):
-        """Creates controls for brightness, CPU governor, and fan speed (placeholder)."""
-        
-        # Screen Brightness Slider
-        ttk.Label(parent_frame, text="Screen Brightness:").grid(row=0, column=0, sticky="w", pady=5)
-        self.brightness_slider = ttk.Scale(parent_frame, from_=0, to=100, orient="horizontal", command=self._on_brightness_change)
+    # -----------------------------
+    # --- NAVIGATION & TOOLTIP ---
+    # -----------------------------
+    def _show_frame(self, name):
+        """Switch between sections dynamically."""
+        for f in self.frames.values():
+            f.pack_forget()
+        self.frames[name].pack(expand=True, fill="both", padx=15, pady=10)
+
+    def _tooltip(self, widget, text):
+        """Lightweight tooltip hover helper."""
+        tip = tk.Toplevel(widget)
+        tip.withdraw()
+        tip.overrideredirect(True)
+        lbl = ttk.Label(tip, text=text, background="#ffffe0", relief="solid", borderwidth=1, padding=3)
+        lbl.pack()
+        def enter(event):
+            tip.deiconify()
+            tip.geometry(f"+{widget.winfo_rootx()+20}+{widget.winfo_rooty()+20}")
+        def leave(event):
+            tip.withdraw()
+        widget.bind("<Enter>", enter)
+        widget.bind("<Leave>", leave)
+
+    # -----------------------------
+    # --- HARDWARE CONTROLS ---
+    # -----------------------------
+    def _create_hardware_controls(self, frame):
+        ttk.Label(frame, text="Screen Brightness:").grid(row=0, column=0, sticky="w", pady=5)
+        self.brightness_slider = ttk.Scale(frame, from_=0, to=100, orient="horizontal", command=self._on_brightness_change)
         self.brightness_slider.set(self.logic.get_brightness() or 80)
         self.brightness_slider.grid(row=0, column=1, sticky="ew", padx=5)
 
-        # CPU Governor Dropdown
-        ttk.Label(parent_frame, text="CPU Profile:").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="CPU Governor:").grid(row=1, column=0, sticky="w", pady=5)
         self.governor_options = ["powersave", "schedutil", "performance"]
         self.governor_var = tk.StringVar(value=self.logic.get_cpu_governor())
-        gov_menu = ttk.OptionMenu(parent_frame, self.governor_var, self.governor_var.get(), 
-                                  *self.governor_options, command=self._on_governor_change)
-        gov_menu.grid(row=2, column=1, sticky="ew", padx=5)
-            
-        # Fan Speed (Placeholder)
-        ttk.Label(parent_frame, text="Fan Speed (N/A):").grid(row=3, column=0, sticky="w", pady=5)
-        self.fan_slider = ttk.Scale(parent_frame, from_=0, to=100, orient="horizontal")
+        gov_menu = ttk.OptionMenu(frame, self.governor_var, self.governor_var.get(), *self.governor_options, command=self._on_governor_change)
+        gov_menu.grid(row=1, column=1, sticky="ew", padx=5)
+
+        ttk.Label(frame, text="Fan Speed (N/A):").grid(row=2, column=0, sticky="w", pady=5)
+        self.fan_slider = ttk.Scale(frame, from_=0, to=100, orient="horizontal")
         self.fan_slider.set(50)
-        self.fan_slider.state(['disabled']) # Disable fan slider as it's not implemented
-        self.fan_slider.grid(row=3, column=1, sticky="ew", padx=5)
+        self.fan_slider.state(['disabled'])
+        self.fan_slider.grid(row=2, column=1, sticky="ew", padx=5)
 
-        parent_frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(1, weight=1)
 
-    def _create_connectivity_controls(self, parent_frame):
-        """Creates checkbuttons for Wi-Fi and Bluetooth toggles."""
-        
-        # Wi-Fi Checkbutton
+    # -----------------------------
+    # --- CONNECTIVITY CONTROLS ---
+    # -----------------------------
+    
+    def _create_connectivity_controls(self, frame):
         self.wifi_var = tk.BooleanVar(value=self.logic.get_wifi_status())
-        wifi_check = ttk.Checkbutton(parent_frame, text="Enable Wi-Fi", 
-                                     variable=self.wifi_var, command=self._toggle_wifi)
-        wifi_check.pack(side="left", padx=10, expand=True)
+        wifi_check = ttk.Checkbutton(frame, text="Enable Wi-Fi", variable=self.wifi_var, command=self._toggle_wifi)
+        wifi_check.pack(side="left", padx=20, expand=True)
+        self._tooltip(wifi_check, "Toggle wireless connectivity")
 
-        # Bluetooth Checkbutton
         self.bt_var = tk.BooleanVar(value=self.logic.get_bluetooth_status())
-        bt_check = ttk.Checkbutton(parent_frame, text="Enable Bluetooth", 
-                                   variable=self.bt_var, command=self._toggle_bluetooth)
-        bt_check.pack(side="left", padx=10, expand=True)
+        bt_check = ttk.Checkbutton(frame, text="Enable Bluetooth", variable=self.bt_var, command=self._toggle_bluetooth)
+        bt_check.pack(side="left", padx=20, expand=True)
+        self._tooltip(bt_check, "Enable or disable Bluetooth adapter")
 
-    def _create_usb_controls(self, parent_frame):
-        """
-        Creates controls for the primary USB device power control.
-        NOTE: This GUI only shows and controls the first device (DEFAULT_DEVICE_PATH).
-        """
-        # Fetch the status of all target devices (list contains status of all TARGET_DEVICES)
-        self.usb_devices = self.logic.get_usb_devices()
-        
-        # Check if the primary target device path exists in /sys/bus/usb/devices
-        if not self.usb_devices or not os.path.exists(f"/sys/bus/usb/devices/{self.logic.DEFAULT_DEVICE_PATH}"):
-            ttk.Label(parent_frame, text=f"Target device {self.logic.DEFAULT_DEVICE_PATH} not found or not controllable.").pack()
+    # -----------------------------
+    # --- USB CONTROLS ---
+    # -----------------------------
+    def _create_usb_controls(self, frame):
+        devices = self.logic.get_usb_devices()
+        if not devices:
+            ttk.Label(frame, text="No controllable USB devices detected.").pack()
             return
-            
-        # Use the first device's status for the display
-        device = self.usb_devices[0]
-        
-        # Display the device name, path, and current status
-        label_text = f"Device: {device['name']}\nPath: {device['path']} | Status: {device['control']}"
-        ttk.Label(parent_frame, text=label_text).pack(anchor="w", padx=10, pady=5)
 
-        # Store the device path for button callbacks
-        self.usb_vars = [(tk.BooleanVar(), device['path'])] 
-        
-        btn_frame = ttk.Frame(parent_frame)
-        btn_frame.pack(pady=10, fill="x")
-        
-        # Button to set power/control to 'auto' (Autosuspend ENABLED/Power Saving)
-        sus_btn = ttk.Button(btn_frame, text="✅ Enable Autosuspend (Auto)", command=self._enable_autosuspend_selected)
-        sus_btn.pack(side="left", expand=True, padx=5)
-        
-        # Button to set power/control to 'on' (Autosuspend DISABLED/Full Power)
-        res_btn = ttk.Button(btn_frame, text="❌ Disable Autosuspend (On)", command=self._disable_autosuspend_selected)
-        res_btn.pack(side="left", expand=True, padx=5)
-        
-        # Refresh button to update the status text
-        ttk.Button(parent_frame, text="Refresh Status", command=self._refresh_usb_status).pack(pady=5)
+        ttk.Label(frame, text="USB Device Power Control").pack(anchor="w", padx=10, pady=(5, 10))
+
+        for device in devices:
+            dev_frame = ttk.Frame(frame)
+            dev_frame.pack(fill="x", padx=10, pady=5)
+
+            info = f"{device['name']}  |  Path: {device['path']}  |  Status: {device['control']}"
+            ttk.Label(dev_frame, text=info).pack(side="left", padx=5)
+
+            ttk.Button(
+                dev_frame,
+                text="Enable Autosuspend",
+                command=lambda d=device['path']: self._enable_autosuspend_selected(d)
+            ).pack(side="left", padx=5)
+
+            ttk.Button(
+                dev_frame,
+                text="Disable Autosuspend",
+                command=lambda d=device['path']: self._disable_autosuspend_selected(d)
+            ).pack(side="left", padx=5)
+
+        ttk.Button(frame, text="🔄 Refresh", command=self._refresh_usb_status).pack(pady=10)
+
+    # -----------------------------
+    # --- UPOWER CONFIG ---
+    # -----------------------------
+    def _create_upower_controls(self, frame):
+        config = self.logic.get_upower_config()
+        self.upower_vars = {}
+        keys = ['PercentageLow', 'PercentageCritical', 'PercentageAction', 'CriticalPowerAction']
+        actions = ["HybridSleep", "Hibernate", "PowerOff", "Suspend", "None"]
+
+        for i, key in enumerate(keys):
+            ttk.Label(frame, text=f"{key}:").grid(row=i, column=0, sticky="w", pady=5)
+            var = tk.StringVar(value=config.get(key, "N/A"))
+            self.upower_vars[key] = var
+            if key != "CriticalPowerAction":
+                ttk.Entry(frame, textvariable=var).grid(row=i, column=1, sticky="ew", padx=5)
+            else:
+                ttk.OptionMenu(frame, var, var.get(), *actions).grid(row=i, column=1, sticky="ew", padx=5)
+
+        ttk.Button(frame, text="💾 Apply Settings", command=self._apply_upower_settings).grid(row=len(keys), column=0, columnspan=2, pady=10, sticky="ew")
+        frame.columnconfigure(1, weight=1)
+
+    # -----------------------------
+    # --- PROFILE CONTROLS ---
+    # -----------------------------
+    def _create_profile_controls(self, frame):
+        ttk.Label(frame, text="Profile Name:").grid(row=0, column=0, sticky="w", pady=5)
+        self.profile_name_entry = ttk.Entry(frame)
+        self.profile_name_entry.grid(row=0, column=1, sticky="ew", padx=5)
+        ttk.Button(frame, text="💾 Save", command=self._save_profile).grid(row=0, column=2, padx=5)
+
+        ttk.Label(frame, text="Load Profile:").grid(row=1, column=0, sticky="w", pady=10)
+        self.profiles = self.logic.get_all_profiles()
+        names = list(self.profiles.keys()) or ["No profiles"]
+        self.selected_profile = tk.StringVar(value=names[0])
+        ttk.OptionMenu(frame, self.selected_profile, names[0], *names).grid(row=1, column=1, sticky="ew", padx=5)
+        ttk.Button(frame, text="📂 Load", command=self._load_profile_button).grid(row=1, column=2, padx=5)
+        frame.columnconfigure(1, weight=1)
+
+    # -----------------------------
+    # --- CALLBACKS ---
+    # -----------------------------
+    def _on_brightness_change(self, value): self.logic.set_brightness(int(float(value)))
+    def _on_governor_change(self, val): self.logic.set_cpu_governor(val)
+    def _toggle_wifi(self): self.logic.set_wifi_status(self.wifi_var.get())
+    def _toggle_bluetooth(self): self.logic.set_bluetooth_status(self.bt_var.get())
+    def _enable_autosuspend_selected(self, device_path):
+        self.logic.enable_autosuspend(device_path)
+        self._refresh_usb_status()
+
+    def _disable_autosuspend_selected(self, device_path):
+        self.logic.disable_autosuspend(device_path)
+        self._refresh_usb_status()
 
 
     def _refresh_usb_status(self):
-        """Clears and redraws the USB control frame to show the new status after an action."""
-        for widget in self.root.winfo_children():
-            # Find the USB LabelFrame
-            if widget.winfo_class() == 'Labelframe' and widget.cget('text') == 'USB Device Power':
-                usb_frame = widget
-                # Destroy all children in the frame
-                for child in usb_frame.winfo_children():
-                    child.destroy()
-                # Recreate the controls to show the updated status
-                self._create_usb_controls(usb_frame)
-                return
+        self._show_frame("USB")
 
-    def _create_profile_controls(self, parent_frame):
-        """Creates controls for saving and loading power profiles."""
-        
-        # Save Profile controls
-        ttk.Label(parent_frame, text="Profile Name:").grid(row=0, column=0, sticky="w", pady=5)
-        self.profile_name_entry = ttk.Entry(parent_frame)
-        self.profile_name_entry.grid(row=0, column=1, sticky="ew", padx=5)
-        save_btn = ttk.Button(parent_frame, text="Save Current", command=self._save_profile)
-        save_btn.grid(row=0, column=2, padx=5)
-            
-        # Load Profile controls
-        ttk.Label(parent_frame, text="Load Profile:").grid(row=1, column=0, sticky="w", pady=15)
-        self.profiles = self.logic.get_all_profiles()
-        profile_names = list(self.profiles.keys())
-        if not profile_names: profile_names = ["No profiles"]
-            
-        self.selected_profile = tk.StringVar(value=profile_names[0])
-        self.profile_dropdown = ttk.OptionMenu(parent_frame, self.selected_profile, 
-                                               profile_names[0], *profile_names)
-        self.profile_dropdown.grid(row=1, column=1, sticky="ew", padx=5)
-        load_btn = ttk.Button(parent_frame, text="Load Selected", command=self._load_profile_button)
-        load_btn.grid(row=1, column=2, padx=5)
+    def _apply_upower_settings(self):
+        try:
+            low = int(self.upower_vars['PercentageLow'].get())
+            crit = int(self.upower_vars['PercentageCritical'].get())
+            act = int(self.upower_vars['PercentageAction'].get())
+            action = self.upower_vars['CriticalPowerAction'].get()
+            if not self.logic.set_upower_config(low, crit, act, action):
+                raise Exception("set_upower_config failed")
+            messagebox.showinfo("Success", "UPower settings applied successfully.")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
 
-        parent_frame.columnconfigure(1, weight=1)
-
-    # --- Hardware Callbacks ---
-    def _on_brightness_change(self, value):
-        """Called when the brightness slider is moved."""
-        self.logic.set_brightness(int(float(value)))
-
-    def _on_governor_change(self, governor):
-        """Called when the CPU governor is changed in the dropdown."""
-        self.logic.set_cpu_governor(governor)
-
-    # --- Connectivity Callbacks ---
-    def _toggle_wifi(self):
-        """Called when the Wi-Fi checkbox is toggled."""
-        self.logic.set_wifi_status(self.wifi_var.get())
-
-    def _toggle_bluetooth(self):
-        """Called when the Bluetooth checkbox is toggled."""
-        self.logic.set_bluetooth_status(self.bt_var.get())
-
-    # --- USB Autosuspend Callbacks ---
-    def _enable_autosuspend_selected(self):
-        """Calls the logic to set all target USB devices to 'auto'."""
-        for _, device_path in self.usb_vars:
-            # Note: logic.enable_autosuspend is a wrapper that calls enable_autosuspend_all
-            self.logic.enable_autosuspend(device_path)
-        self._refresh_usb_status() 
-
-    def _disable_autosuspend_selected(self):
-        """Calls the logic to set all target USB devices to 'on'."""
-        for _, device_path in self.usb_vars:
-            # Note: logic.disable_autosuspend is a wrapper that calls disable_autosuspend_all
-            self.logic.disable_autosuspend(device_path)
-        self._refresh_usb_status() 
-
-    # --- Profile Callbacks ---
     def _save_profile(self):
-        """Gathers current UI settings and saves them using the AppLogic."""
-        profile_name = self.profile_name_entry.get()
-        if not profile_name:
-            messagebox.showwarning("Input Error", "Please enter a name for the profile.")
+        name = self.profile_name_entry.get()
+        if not name:
+            messagebox.showwarning("Input Error", "Enter a profile name.")
             return
-
-        settings = [
-            int(self.brightness_slider.get()),
-            int(self.fan_slider.get()),
-            int(self.keyboard_slider.get()), # Placeholder value
-            self.governor_var.get()
-        ]
-        self.logic.save_settings_to_profile(profile_name, settings)
-        messagebox.showinfo("Success", f"Profile '{profile_name}' saved.")
-        # Reload profiles list after saving
+        data = [int(self.brightness_slider.get()), int(self.fan_slider.get()), int(self.keyboard_slider.get()), self.governor_var.get()]
+        self.logic.save_settings_to_profile(name, data)
+        messagebox.showinfo("Saved", f"Profile '{name}' saved.")
         self.profiles = self.logic.get_all_profiles()
-            
+
     def _load_profile_button(self):
-        """Initiates the process to load the selected profile."""
         self.apply_profile(self.selected_profile.get())
 
-    def apply_profile(self, profile_name):
-        """Applies the settings from a specified profile to the UI and hardware."""
-        settings = self.profiles.get(profile_name)
+    def apply_profile(self, name):
+        settings = self.profiles.get(name)
         if not settings:
-            messagebox.showerror("Error", f"Could not load settings for '{profile_name}'.")
+            messagebox.showerror("Error", f"Profile '{name}' not found.")
             return
+        b, f, kb, g = settings
+        self.brightness_slider.set(b)
+        self.fan_slider.set(f)
+        self.governor_var.set(g)
+        self.logic.set_brightness(b)
+        self.logic.set_cpu_governor(g)
+        messagebox.showinfo("Loaded", f"Profile '{name}' applied.")
 
+    # -----------------------------
+    # --- STATUS & POWER CHECK ---
+    # -----------------------------
+    def _update_status_bar(self):
         try:
-            # Unpack settings (brightness, fan_speed, kbd_brightness, governor)
-            brightness, fan_speed, kbd_brightness, governor = settings
-                
-            # Apply to GUI (Sliders/Dropdowns)
-            self.brightness_slider.set(brightness)
-            self.fan_slider.set(fan_speed) 
-            self.keyboard_slider.set(kbd_brightness) # Placeholder
-            self.governor_var.set(governor)
-
-            # Apply to Hardware using AppLogic
-            self.logic.set_brightness(brightness)
-            # self.logic.set_keyboard_brightness(kbd_brightness) # Not implemented in logic
-            self.logic.set_cpu_governor(governor)
-                
-            messagebox.showinfo("Success", f"Profile '{profile_name}' loaded.")
+            power = self.logic.get_power_status()
+            battery = self.logic.get_battery_percentage()
+            self.status_bar.config(text=f"Power: {power.upper()} | Battery: {battery}%")
         except Exception as e:
-            messagebox.showerror("Profile Error", f"Error applying profile: {e}\nProfile may be outdated.")
+            self.status_bar.config(text=f"Error reading status: {e}")
+        self.root.after(5000, self._update_status_bar)
 
-    # --- Automatic Power Check Loop ---
     def _check_power_loop(self):
-        """Polls the power status every 10 seconds and automatically loads profiles."""
         try:
-            current_status = self.logic.get_power_status()
-            if current_status != self.last_power_status:
-                self.last_power_status = current_status
-                
-                # Automatically switch profiles based on power status change
-                if current_status == "online":
-                    self.logic.send_notification("AC Power", "Plugged in, applying 'Balanced' profile.")
+            cur = self.logic.get_power_status()
+            if cur != self.last_power_status:
+                self.last_power_status = cur
+                if cur == "online":
+                    self.logic.send_notification("AC Power", "Plugged in, applying 'Balanced'")
                     self.apply_profile("Balanced")
                 else:
-                    self.logic.send_notification("On Battery", "Unplugged, applying 'Power Saver' profile.")
+                    self.logic.send_notification("Battery", "Unplugged, applying 'Power Saver'")
                     self.apply_profile("Power Saver")
         except Exception as e:
-            print(f"Error in power check loop: {e}")
-            
-        # Schedule next check
-        self.root.after(10000, self._check_power_loop) # Check every 10 seconds
+            print(f"Power check error: {e}")
+        self.root.after(10000, self._check_power_loop)
 
     def run(self):
-        """Starts the Tkinter main loop."""
         self.root.mainloop()
+
