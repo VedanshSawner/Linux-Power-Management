@@ -6,8 +6,6 @@ import os
 import re
 from typing import List, Dict, Any
 
-# NOTE: The redundant 'ApplicationLogic' class previously defined here has been removed.
-# All logic is now accessed via the 'self.logic' instance passed in __init__.
 
 # --- APPLICATION GUI CLASS ---
 class ApplicationGUI:
@@ -30,18 +28,21 @@ class ApplicationGUI:
         hw_frame = ttk.LabelFrame(self.root, text="Hardware Controls", padding=(20, 10))
         conn_frame = ttk.LabelFrame(self.root, text="Connectivity", padding=(20, 10))
         usb_frame = ttk.LabelFrame(self.root, text="USB Device Power", padding=(20, 10))
+        upower_frame = ttk.LabelFrame(self.root, text="UPower Shutdown Config", padding=(20, 10)) # NEW FRAME
         profile_frame = ttk.LabelFrame(self.root, text="Settings Profiles", padding=(20, 10))
 
         # --- Pack Frames ---
         hw_frame.pack(padx=10, pady=10, fill="x")
         conn_frame.pack(padx=10, pady=10, fill="x")
         usb_frame.pack(padx=10, pady=10, fill="x")
+        upower_frame.pack(padx=10, pady=10, fill="x") # PACK NEW FRAME
         profile_frame.pack(padx=10, pady=10, fill="x")
 
         # --- Populate Frames ---
         self._create_hardware_controls(hw_frame)
         self._create_connectivity_controls(conn_frame)
         self._create_usb_controls(usb_frame)
+        self._create_upower_controls(upower_frame) # POPULATE NEW FRAME
         self._create_profile_controls(profile_frame)
 
         # Placeholder for save_profile compatibility
@@ -65,7 +66,7 @@ class ApplicationGUI:
         self.governor_options = ["powersave", "schedutil", "performance"]
         self.governor_var = tk.StringVar(value=self.logic.get_cpu_governor())
         gov_menu = ttk.OptionMenu(parent_frame, self.governor_var, self.governor_var.get(), 
-                                  *self.governor_options, command=self._on_governor_change)
+                                 *self.governor_options, command=self._on_governor_change)
         gov_menu.grid(row=2, column=1, sticky="ew", padx=5)
             
         # Fan Speed (Placeholder)
@@ -89,7 +90,7 @@ class ApplicationGUI:
         # Bluetooth Checkbutton
         self.bt_var = tk.BooleanVar(value=self.logic.get_bluetooth_status())
         bt_check = ttk.Checkbutton(parent_frame, text="Enable Bluetooth", 
-                                   variable=self.bt_var, command=self._toggle_bluetooth)
+                                     variable=self.bt_var, command=self._toggle_bluetooth)
         bt_check.pack(side="left", padx=10, expand=True)
 
     def _create_usb_controls(self, parent_frame):
@@ -142,6 +143,81 @@ class ApplicationGUI:
                 # Recreate the controls to show the updated status
                 self._create_usb_controls(usb_frame)
                 return
+
+    def _create_upower_controls(self, parent_frame):
+        """Creates controls for UPower configuration."""
+        
+        config = self.logic.get_upower_config()
+        self.upower_vars = {} # Store tk.StringVar for each setting
+
+        keys = ['PercentageLow', 'PercentageCritical', 'PercentageAction', 'CriticalPowerAction']
+        action_options = ["HybridSleep", "Hibernate", "PowerOff", "Suspend", "None"] # Standard UPower actions
+        
+        # Helper to create label and input field
+        def create_control(parent, row, key, is_percentage, options=None):
+            ttk.Label(parent, text=f"{key}:").grid(row=row, column=0, sticky="w", pady=5)
+            
+            current_value = config.get(key, "N/A")
+            var = tk.StringVar(value=current_value)
+            self.upower_vars[key] = var
+            
+            if not is_percentage:
+                # Use OptionMenu for the action
+                menu = ttk.OptionMenu(parent, var, current_value, *options)
+                menu.grid(row=row, column=1, sticky="ew", padx=5)
+            else:
+                # Use Entry for percentage values
+                entry = ttk.Entry(parent, textvariable=var)
+                entry.grid(row=row, column=1, sticky="ew", padx=5)
+
+        # Create controls for the four settings
+        create_control(parent_frame, 0, 'PercentageLow', True)
+        create_control(parent_frame, 1, 'PercentageCritical', True)
+        create_control(parent_frame, 2, 'PercentageAction', True)
+        create_control(parent_frame, 3, 'CriticalPowerAction', False, action_options)
+        
+        # Apply button
+        save_btn = ttk.Button(parent_frame, text="Apply UPower Settings (Requires Sudo)", 
+                              command=self._apply_upower_settings)
+        save_btn.grid(row=len(keys), column=0, columnspan=2, pady=10, sticky="ew")
+        
+        parent_frame.columnconfigure(1, weight=1)
+
+    def _apply_upower_settings(self):
+        """Callback to apply all modified UPower settings using the C tool."""
+        try:
+            # 1. Get values and perform basic validation
+            low = self.upower_vars['PercentageLow'].get()
+            critical = self.upower_vars['PercentageCritical'].get()
+            action_pct = self.upower_vars['PercentageAction'].get()
+            action_type = self.upower_vars['CriticalPowerAction'].get()
+
+            # Input validation
+            if not (low.isdigit() and critical.isdigit() and action_pct.isdigit()):
+                messagebox.showwarning("Input Error", "Percentage values must be positive integers.")
+                return
+
+            low = int(low)
+            critical = int(critical)
+            action_pct = int(action_pct)
+
+            if not (0 <= low <= 100 and 0 <= critical <= 100 and 0 <= action_pct <= 100):
+                messagebox.showwarning("Input Error", "Percentage values must be between 0 and 100.")
+                return
+            
+            # 2. Call AppLogic to execute the C tool
+            success = self.logic.set_upower_config(low, critical, action_pct, action_type)
+            
+            if success:
+                # Refresh status displayed by re-populating the frame
+                # (A simple status refresh is not implemented, but the success message confirms execution)
+                messagebox.showinfo("Success", "UPower configuration applied. Service restarted.")
+            else:
+                messagebox.showerror("Error", "Failed to apply UPower settings. Check console for details.")
+            
+        except Exception as e:
+            messagebox.showerror("Critical Error", f"An unexpected error occurred: {e}")
+
 
     def _create_profile_controls(self, parent_frame):
         """Creates controls for saving and loading power profiles."""

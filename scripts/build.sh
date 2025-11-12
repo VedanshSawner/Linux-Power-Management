@@ -16,6 +16,8 @@ echo "Cleaning: cpu_governor tool..."
 (cd cpu_governor && make clean)
 echo "Cleaning: power_status tool..."
 (cd power_status && make clean)
+echo "Cleaning: Battery_Saver tool..."
+(cd Battery_Saver && make clean)
 
 # --- Check for uhubctl before cleaning/building usb_manager ---
 echo "Checking for uhubctl support..."
@@ -46,6 +48,8 @@ echo "Building: cpu_governor tool..."
 (cd cpu_governor && make)
 echo "Building: power_status tool..."
 (cd power_status && make)
+echo "Building: Battery_Saver tool..."
+(cd Battery_Saver && make)
 
 if [ "$UHUBCTL_SUPPORTED" -eq 1 ]; then
     echo "Building: usb_manager tool..."
